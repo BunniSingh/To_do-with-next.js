@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import dbConnect from './mongodb';
+import dbConnect from './mongodb.js';
 
 const userSchema = new mongoose.Schema({
   name: {
@@ -7,6 +7,7 @@ const userSchema = new mongoose.Schema({
     required: true,
     trim: true,
   },
+
   email: {
     type: String,
     required: true,
@@ -14,6 +15,7 @@ const userSchema = new mongoose.Schema({
     lowercase: true,
     trim: true,
   },
+
   password: {
     type: String,
     required: true,
@@ -47,4 +49,22 @@ export async function checkUserExists(email) {
   await dbConnect();
   const user = await User.findOne({ email: email.toLowerCase() });
   return !!user;
+}
+
+export async function findUsersByIds(ids) {
+  await dbConnect();
+  const users = await User.find({ _id: { $in: ids } }).select('-password');
+  return users.map(user => user.toObject());
+}
+
+export async function searchUsers(query, excludeUserId) {
+  await dbConnect();
+  const searchRegex = new RegExp(query, 'i');
+  const users = await User.find({
+    $and: [
+      { _id: { $ne: excludeUserId } },
+      { $or: [{ name: searchRegex }, { email: searchRegex }] }
+    ]
+  }).select('-password').limit(20);
+  return users.map(user => user.toObject());
 }

@@ -1,24 +1,34 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcrypt";
 import { createUser, checkUserExists } from "@/lib/usersDb";
+import { validateName, validatePassword, isValidEmail, sanitizeString } from "@/lib/validation";
 
 export async function POST(req) {
   try {
     const { name, email, password } = await req.json();
 
-    // Validate input
-    if (!name || !email || !password) {
+    // Validate name
+    const nameValidation = validateName(name);
+    if (!nameValidation.valid) {
       return NextResponse.json(
-        { error: "Name, email and password are required" },
+        { error: nameValidation.error },
         { status: 400 }
       );
     }
 
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    // Validate email
+    if (!isValidEmail(email)) {
       return NextResponse.json(
         { error: "Please provide a valid email address" },
+        { status: 400 }
+      );
+    }
+
+    // Validate password
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.valid) {
+      return NextResponse.json(
+        { error: passwordValidation.error },
         { status: 400 }
       );
     }
@@ -32,19 +42,15 @@ export async function POST(req) {
       );
     }
 
-    // Validate password strength (at least 6 characters)
-    if (password.length < 6) {
-      return NextResponse.json(
-        { error: "Password must be at least 6 characters long" },
-        { status: 400 }
-      );
-    }
-
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create new user in MongoDB
-    const newUser = await createUser(name, email, hashedPassword);
+    const newUser = await createUser(
+      sanitizeString(nameValidation.value),
+      email.toLowerCase().trim(),
+      hashedPassword
+    );
 
     // Return success response (excluding password)
     const { password: _, ...userWithoutPassword } = newUser;

@@ -5,27 +5,24 @@ import { createContext, useContext, useEffect, useState } from 'react';
 const ThemeContext = createContext(undefined);
 
 export function ThemeProvider({ children }) {
-  const [theme, setTheme] = useState(null);
+  const [theme, setTheme] = useState('light');
   const [isMounted, setIsMounted] = useState(false);
 
+  // Initialize theme on mount (client-side only)
   useEffect(() => {
     setIsMounted(true);
+    
     // Check for saved theme in localStorage or respect system preference
     const savedTheme = localStorage.getItem('theme');
     const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
-    if (savedTheme) {
-      setTheme(savedTheme);
-    } else if (systemPrefersDark) {
-      setTheme('dark');
-    } else {
-      setTheme('light');
-    }
+    const initialTheme = savedTheme || (systemPrefersDark ? 'dark' : 'light');
+    setTheme(initialTheme);
   }, []);
 
   useEffect(() => {
     // Apply theme to document only when mounted
-    if (!isMounted || !theme) return;
+    if (!isMounted) return;
 
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
@@ -43,11 +40,8 @@ export function ThemeProvider({ children }) {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
   };
 
-  // Prevent hydration mismatch by rendering nothing until mounted
-  if (!isMounted || !theme) {
-    return null;
-  }
-
+  // Always render children to avoid layout shift
+  // Theme will be applied as soon as component mounts
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>
       {children}

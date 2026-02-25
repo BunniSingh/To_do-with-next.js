@@ -1,63 +1,85 @@
 import { getTodosByUserId, createTodo, updateTodo, deleteTodo, toggleTodo } from "@/lib/db";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/authOptions";
+import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
+import { validateTodoText, isValidObjectId } from "@/lib/validation";
 
 export async function GET(req) {
-  const session = await getServerSession(authOptions);
-
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   try {
+    const session = await auth();
+    console.log('[Todo API GET] Session:', session ? 'Authenticated' : 'No session');
+
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    console.log('[Todo API GET] User ID:', session.user.id);
     const todos = await getTodosByUserId(session.user.id);
+    console.log('[Todo API GET] Found', todos.length, 'todos');
     return NextResponse.json(todos);
   } catch (error) {
-    return NextResponse.json({ error: "Failed to fetch todos" }, { status: 500 });
+    console.error("[Todo API GET] Error:", error);
+    return NextResponse.json({ error: "Failed to fetch todos", details: error.message }, { status: 500 });
   }
 }
 
 export async function POST(req) {
-  const session = await getServerSession(authOptions);
-
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   try {
-    const { text } = await req.json();
+    const session = await auth();
+    console.log('[Todo API POST] Session:', session ? 'Authenticated' : 'No session');
 
-    if (!text || text.trim() === "") {
-      return NextResponse.json({ error: "Todo text is required" }, { status: 400 });
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const newTodo = await createTodo(text.trim(), session.user.id);
+    const body = await req.json();
+    console.log('[Todo API POST] Request body:', body);
+
+    const { text } = body;
+
+    // Validate todo text
+    const textValidation = validateTodoText(text);
+    if (!textValidation.valid) {
+      console.log('[Todo API POST] Validation failed:', textValidation.error);
+      return NextResponse.json({ error: textValidation.error }, { status: 400 });
+    }
+
+    console.log('[Todo API POST] Creating todo for user:', session.user.id);
+    const newTodo = await createTodo(textValidation.value, session.user.id);
+    console.log('[Todo API POST] Created todo:', newTodo);
     return NextResponse.json(newTodo);
   } catch (error) {
-    return NextResponse.json({ error: "Failed to create todo" }, { status: 500 });
+    console.error("[Todo API POST] Error:", error);
+    return NextResponse.json({ error: "Failed to create todo", details: error.message }, { status: 500 });
   }
 }
 
 export async function PUT(req) {
-  const session = await getServerSession(authOptions);
-
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   try {
-    const { id, text } = await req.json();
+    const session = await auth();
 
-    if (!id) {
-      return NextResponse.json({ error: "Todo ID is required" }, { status: 400 });
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!text || text.trim() === "") {
-      return NextResponse.json({ error: "Todo text is required" }, { status: 400 });
+    const body = await req.json();
+    console.log('[Todo API PUT] Request body:', body);
+
+    const { id, text } = body;
+
+    // Validate ID
+    if (!id || !isValidObjectId(id)) {
+      return NextResponse.json({ error: "Invalid todo ID" }, { status: 400 });
     }
 
-    const updatedTodo = await updateTodo(id, text.trim(), session.user.id);
+    // Validate todo text
+    const textValidation = validateTodoText(text);
+    if (!textValidation.valid) {
+      return NextResponse.json({ error: textValidation.error }, { status: 400 });
+    }
+
+    console.log('[Todo API PUT] Updating todo:', id, 'for user:', session.user.id);
+    const updatedTodo = await updateTodo(id, textValidation.value, session.user.id);
+    console.log('[Todo API PUT] Updated todo:', updatedTodo);
 
     if (!updatedTodo) {
       return NextResponse.json({ error: "Todo not found or unauthorized" }, { status: 404 });
@@ -65,27 +87,30 @@ export async function PUT(req) {
 
     return NextResponse.json(updatedTodo);
   } catch (error) {
-    console.error("Update todo error:", error);
-    return NextResponse.json({ error: "Failed to update todo" }, { status: 500 });
+    console.error("[Todo API PUT] Error:", error);
+    return NextResponse.json({ error: "Failed to update todo", details: error.message }, { status: 500 });
   }
 }
 
 export async function DELETE(req) {
-  const session = await getServerSession(authOptions);
-
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   try {
+    const session = await auth();
+
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
+    console.log('[Todo API DELETE] Deleting todo:', id);
 
-    if (!id) {
-      return NextResponse.json({ error: "Todo ID is required" }, { status: 400 });
+    // Validate ID
+    if (!id || !isValidObjectId(id)) {
+      return NextResponse.json({ error: "Invalid todo ID" }, { status: 400 });
     }
 
     const deletedTodo = await deleteTodo(id, session.user.id);
+    console.log('[Todo API DELETE] Deleted todo:', deletedTodo);
 
     if (!deletedTodo) {
       return NextResponse.json({ error: "Todo not found or unauthorized" }, { status: 404 });
@@ -93,30 +118,34 @@ export async function DELETE(req) {
 
     return NextResponse.json(deletedTodo);
   } catch (error) {
-    console.error("Delete todo error:", error);
-    return NextResponse.json({ error: "Failed to delete todo" }, { status: 500 });
+    console.error("[Todo API DELETE] Error:", error);
+    return NextResponse.json({ error: "Failed to delete todo", details: error.message }, { status: 500 });
   }
 }
 
 export async function PATCH(req) {
-  const session = await getServerSession(authOptions);
-
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   try {
+    const session = await auth();
+
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     const { action } = await req.json();
 
-    if (!id) {
-      return NextResponse.json({ error: "Todo ID is required" }, { status: 400 });
+    console.log('[Todo API PATCH] Toggling todo:', id, 'action:', action);
+
+    // Validate ID
+    if (!id || !isValidObjectId(id)) {
+      return NextResponse.json({ error: "Invalid todo ID" }, { status: 400 });
     }
 
     if (action === "toggle") {
       const toggledTodo = await toggleTodo(id, session.user.id);
-      
+      console.log('[Todo API PATCH] Toggled todo:', toggledTodo);
+
       if (!toggledTodo) {
         return NextResponse.json({ error: "Todo not found or unauthorized" }, { status: 404 });
       }
@@ -126,7 +155,7 @@ export async function PATCH(req) {
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (error) {
-    console.error("Toggle todo error:", error);
-    return NextResponse.json({ error: "Failed to toggle todo" }, { status: 500 });
+    console.error("[Todo API PATCH] Error:", error);
+    return NextResponse.json({ error: "Failed to toggle todo", details: error.message }, { status: 500 });
   }
 }

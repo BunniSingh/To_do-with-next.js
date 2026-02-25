@@ -30,7 +30,8 @@ function isValidObjectId(id) {
 
 export async function getTodosByUserId(userId) {
   await dbConnect();
-  const todos = await Todo.find({ userId }).sort({ createdAt: -1 });
+  // userId is stored as string, query as string
+  const todos = await Todo.find({ userId: userId }).sort({ createdAt: -1 });
   return todos.map(todo => ({
     id: todo._id.toString(),
     text: todo.text,
@@ -42,7 +43,8 @@ export async function getTodosByUserId(userId) {
 
 export async function createTodo(text, userId) {
   await dbConnect();
-  const todo = await Todo.create({ text, userId });
+  // Store userId as string
+  const todo = await Todo.create({ text, userId: userId.toString() });
   return {
     id: todo._id.toString(),
     text: todo.text,
@@ -54,13 +56,14 @@ export async function createTodo(text, userId) {
 
 export async function updateTodo(id, text, userId) {
   await dbConnect();
-  
+
   if (!isValidObjectId(id)) {
     return null;
   }
-  
+
+  // Query with string userId
   const updated = await Todo.findOneAndUpdate(
-    { _id: new mongoose.Types.ObjectId(id), userId },
+    { _id: new mongoose.Types.ObjectId(id), userId: userId.toString() },
     { text },
     { new: true }
   );
@@ -73,12 +76,16 @@ export async function updateTodo(id, text, userId) {
 
 export async function deleteTodo(id, userId) {
   await dbConnect();
-  
+
   if (!isValidObjectId(id)) {
     return null;
   }
-  
-  const deleted = await Todo.findOneAndDelete({ _id: new mongoose.Types.ObjectId(id), userId });
+
+  // Query with string userId
+  const deleted = await Todo.findOneAndDelete({ 
+    _id: new mongoose.Types.ObjectId(id), 
+    userId: userId.toString() 
+  });
   return deleted ? {
     id: deleted._id.toString(),
     text: deleted.text,
@@ -88,19 +95,25 @@ export async function deleteTodo(id, userId) {
 
 export async function toggleTodo(id, userId) {
   await dbConnect();
-  
+
   if (!isValidObjectId(id)) {
     return null;
   }
-  
-  const todo = await Todo.findById(id);
-  if (!todo || todo.userId !== userId) {
+
+  // Find the todo first
+  const todo = await Todo.findOne({ 
+    _id: new mongoose.Types.ObjectId(id), 
+    userId: userId.toString() 
+  });
+
+  if (!todo) {
     return null;
   }
-  
+
+  // Toggle the completed status and save
   todo.completed = !todo.completed;
   await todo.save();
-  
+
   return {
     id: todo._id.toString(),
     text: todo.text,

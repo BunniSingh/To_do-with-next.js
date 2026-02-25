@@ -1,5 +1,9 @@
-"use client";
+import NextAuth from "next-auth";
+import { authOptions } from "./authOptions";
 
-import { signIn, signOut } from "next-auth/react";
-
-export { signIn, signOut };
+export const {
+  handlers,
+  auth,
+  signIn,
+  signOut,
+} = NextAuth(authOptions);

@@ -1,9 +1,9 @@
-import { getServerSession } from "next-auth";
+import { auth } from "@/lib/auth";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import AuthProvider from "./AuthProvider";
 import { ThemeProvider } from "@/context/ThemeContext";
-import { authOptions } from "@/lib/authOptions";
+import { SocketProvider } from "@/context/SocketContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -15,14 +15,16 @@ export const metadata = {
 export const viewport = "width=device-width, initial-scale=1, maximum-scale=5";
 
 export default async function RootLayout({ children }) {
-  const session = await getServerSession(authOptions);
-  
+  const session = await auth();
+
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
         <ThemeProvider>
           <AuthProvider session={session}>
-            {children}
+            <SocketProvider>
+              {children}
+            </SocketProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

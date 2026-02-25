@@ -4,9 +4,9 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
-export default function AddTodo({ onAdd, onEdit, todos, editMode, editTodo, showToast }) {
+export default function AddTodo({ onAddOrUpdate, onEdit, todos, editMode, editTodo, showToast }) {
   const [text, setText] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { status } = useSession();
   const router = useRouter();
 
@@ -33,41 +33,26 @@ export default function AddTodo({ onAdd, onEdit, todos, editMode, editTodo, show
       return;
     }
 
-    setIsLoading(true);
+    setIsSubmitting(true);
     try {
-      const res = await fetch("/api/todos", {
-        method: editMode ? "PUT" : "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ 
-          text, 
-          ...(editMode && { id: editTodo.id }) 
-        }),
-      });
+      const result = await onAddOrUpdate(text, editMode, editTodo?.id);
 
-      if (!res.ok) {
-        if (res.status === 401) {
-          router.push("/login");
-          return;
+      if (result.success) {
+        showToast(editMode ? "Todo updated successfully!" : "Todo added successfully!", "success");
+        setText("");
+        
+        // Clear edit mode after successful update
+        if (editMode && onEdit) {
+          onEdit();
         }
-        showToast(editMode ? "Failed to update todo." : "Failed to add todo.", "error");
-        return;
-      }
-
-      showToast(editMode ? "Todo updated successfully!" : "Todo added successfully!", "success");
-      
-      if (editMode) {
-        onEdit(); // Refresh todos in parent
       } else {
-        onAdd(); // Refresh todos in parent
+        showToast(result.error || (editMode ? "Failed to update todo." : "Failed to add todo."), "error");
       }
-      setText("");
     } catch (error) {
       console.error("Error saving todo:", error);
       showToast(editMode ? "Failed to update todo." : "Failed to add todo.", "error");
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -87,20 +72,20 @@ export default function AddTodo({ onAdd, onEdit, todos, editMode, editTodo, show
           onChange={(e) => setText(e.target.value)}
           placeholder={editMode ? "Update your todo..." : "What needs to be done?"}
           className="flex-grow px-4 py-3 border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent shadow-sm"
-          disabled={isLoading}
+          disabled={isSubmitting}
         />
         <button
           type="submit"
-          disabled={isLoading || !text.trim()}
+          disabled={isSubmitting || !text.trim()}
           className={`px-6 py-3 rounded-lg font-medium transition duration-200 shadow-md ${
-            isLoading || !text.trim()
+            isSubmitting || !text.trim()
               ? 'bg-gray-400 cursor-not-allowed'
-              : editMode 
+              : editMode
                 ? 'bg-green-600 hover:bg-green-700 text-white hover:shadow-lg'
                 : 'bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow-lg'
           }`}
         >
-          {isLoading ? (
+          {isSubmitting ? (
             <span className="flex items-center">
               <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>

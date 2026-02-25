@@ -2,6 +2,12 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcrypt";
 import { findUserByEmail } from "./usersDb";
 
+// Validate NEXTAUTH_SECRET in development
+if (process.env.NODE_ENV === "development" && !process.env.NEXTAUTH_SECRET) {
+  console.warn("⚠️  NEXTAUTH_SECRET is not set. Authentication may not work properly.");
+  console.warn("📝 Set NEXTAUTH_SECRET in your .env.local file");
+}
+
 export const authOptions = {
   providers: [
     CredentialsProvider({
@@ -71,7 +77,7 @@ export const authOptions = {
   secret: process.env.NEXTAUTH_SECRET,
   session: {
     strategy: "jwt",
-    maxAge: parseInt(process.env.NEXTAUTH_SESSION_MAX_AGE, 10) || (30 * 24 * 60 * 60), // Default 30 days
+    maxAge: parseInt(process.env.NEXTAUTH_SESSION_MAX_AGE || "2592000", 10), // Default 30 days
   },
   debug: process.env.NODE_ENV === "development",
 };

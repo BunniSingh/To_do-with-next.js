@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  /* config options here */
-  reactCompiler: true,
+  // React Compiler disabled - experimental and may cause issues
+  // reactCompiler: true,
 };
 
 export default nextConfig;
