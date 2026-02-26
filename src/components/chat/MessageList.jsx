@@ -62,7 +62,7 @@ export default function MessageList({ messages, conversation, typingUsers }) {
   const groupedMessages = groupMessagesByDate();
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 dark:bg-slate-900">
+    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 dark:bg-slate-900 min-h-full">
       {Object.entries(groupedMessages).map(([dateKey, dateMessages]) => (
         <div key={dateKey}>
           {/* Date Separator */}
@@ -90,13 +90,13 @@ export default function MessageList({ messages, conversation, typingUsers }) {
             return (
               <div
                 key={messageKey}
-                className={`flex items-end gap-2 ${isOwn ? 'flex-row-reverse' : 'flex-row'} ${
+                className={`flex items-end gap-1.5 sm:gap-2 ${isOwn ? 'flex-row-reverse' : 'flex-row'} ${
                   showAvatar ? 'mb-3' : 'mb-1'
                 }`}
               >
                 {/* Avatar for received messages */}
                 {!isOwn && (
-                  <div className={`w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-teal-600 flex items-center justify-center text-white text-sm font-semibold flex-shrink-0 ${
+                  <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-green-500 to-teal-600 flex items-center justify-center text-white text-xs sm:text-sm font-semibold flex-shrink-0 ${
                     showAvatar ? 'opacity-100' : 'opacity-0'
                   }`}>
                     {msg.sender?.name?.charAt(0) || 'U'}
@@ -105,7 +105,7 @@ export default function MessageList({ messages, conversation, typingUsers }) {
 
                 {/* Message Bubble */}
                 <div
-                  className={`max-w-[70%] px-4 py-2 rounded-2xl ${
+                  className={`max-w-[75%] sm:max-w-[70%] px-3 sm:px-4 py-2 rounded-2xl ${
                     isOwn
                       ? 'bg-indigo-600 text-white rounded-br-md'
                       : 'bg-white dark:bg-slate-800 text-gray-800 dark:text-white rounded-bl-md shadow-sm'
@@ -123,9 +123,9 @@ export default function MessageList({ messages, conversation, typingUsers }) {
                       You
                     </p>
                   )}
-                  
-                  <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
-                  
+
+                  <p className="text-xs sm:text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+
                   {/* Message Meta */}
                   <div className={`flex items-center justify-end gap-1 mt-1 ${
                     isOwn ? 'text-indigo-200' : 'text-gray-400'
@@ -142,15 +142,15 @@ export default function MessageList({ messages, conversation, typingUsers }) {
 
       {/* Typing Indicator */}
       {typingUsers.length > 0 && (
-        <div className="flex items-end gap-2">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-teal-600 flex items-center justify-center text-white text-sm font-semibold">
+        <div className="flex items-end gap-1.5 sm:gap-2">
+          <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-green-500 to-teal-600 flex items-center justify-center text-white text-xs sm:text-sm font-semibold">
             {typingUsers[0]?.charAt(0).toUpperCase() || 'U'}
           </div>
-          <div className="px-4 py-3 bg-white dark:bg-slate-800 rounded-2xl rounded-bl-md shadow-sm">
+          <div className="px-3 sm:px-4 py-2 sm:py-3 bg-white dark:bg-slate-800 rounded-2xl rounded-bl-md shadow-sm">
             <div className="flex gap-1">
-              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
             </div>
           </div>
         </div>

@@ -345,19 +345,32 @@ export function initSocket(io) {
       socketId: socket.id,
     });
 
+    // Send current online users list to the newly connected user
+    const onlineUsersList = getActiveUsers();
+    socket.emit('user:online:list', { userIds: onlineUsersList });
+    console.log(`[Socket] Sent online users list to ${socket.userId}:`, onlineUsersList);
+
+    // Notify others that user is online
+    socket.broadcast.emit('user:online', { userId: socket.userId });
+    console.log(`[Socket] Broadcasted user:online for ${socket.userId}`);
+
     // 📥 Join conversation
-    socket.on("conversation:join", async (conversationId) => {
+    socket.on("conversation:join", async (conversationId, ackCallback) => {
       if (!isValidObjectId(conversationId)) {
         console.log('[Socket] Invalid conversation ID:', conversationId);
+        ackCallback?.({ success: false, error: 'Invalid conversation ID' });
         return;
       }
-      
+
       socket.join(`conversation:${conversationId}`);
       console.log(`[Socket] ✓ User ${socket.userId} (${socket.user.name}) joined conversation: ${conversationId}`);
-      
-      // Get rooms for this socket
+
+      // Get rooms for this socket to confirm join
       const rooms = await socket.rooms;
+      const roomName = `conversation:${conversationId}`;
+      const isInRoom = rooms.has(roomName);
       console.log(`[Socket] Socket rooms:`, [...rooms]);
+      console.log(`[Socket] Is in conversation room:`, isInRoom);
 
       try {
         await dbConnect();
@@ -383,8 +396,12 @@ export function initSocket(io) {
           conversationId,
           userId: socket.userId,
         });
+
+        // Send acknowledgment back to client
+        ackCallback?.({ success: true, roomId: conversationId, isInRoom });
       } catch (err) {
         console.error("[Read Error]:", err);
+        ackCallback?.({ success: false, error: err.message });
       }
     });
 
@@ -405,13 +422,12 @@ export function initSocket(io) {
 
         await dbConnect();
 
-        // Check if user is participant - try both string and ObjectId comparison
+        // Check if user is participant (both stored as strings now)
         const convObjId = new mongoose.Types.ObjectId(conversationId);
-        const userObjId = new mongoose.Types.ObjectId(socket.userId);
-        
+
         const conversation = await Conversation.findOne({
           _id: convObjId,
-          participants: userObjId,
+          participants: socket.userId, // Direct string comparison (no ObjectId conversion)
         });
 
         console.log('[Socket] Conversation found:', !!conversation);
@@ -420,9 +436,9 @@ export function initSocket(io) {
           // Debug: Check what participants are in the conversation
           const debugConv = await Conversation.findById(conversationId);
           if (debugConv) {
-            console.log('[Socket] Conversation participants:', debugConv.participants.map(p => p.toString()));
+            console.log('[Socket] Conversation participants:', debugConv.participants);
             console.log('[Socket] Socket userId:', socket.userId);
-            console.log('[Socket] Looking for userId in participants:', debugConv.participants.some(p => p.toString() === socket.userId));
+            console.log('[Socket] Looking for userId in participants:', debugConv.participants.some(p => p === socket.userId));
           }
           return ack?.({
             status: "error",
@@ -464,8 +480,13 @@ export function initSocket(io) {
 
         // Emit to all users in the conversation
         console.log('[Socket] Emitting message to conversation:', conversationId);
-        console.log('[Socket] Rooms in conversation:', await io.in(`conversation:${conversationId}`).fetchSockets().then(sockets => sockets.length));
         
+        // Get all sockets in the conversation room
+        const socketsInRoom = await io.in(`conversation:${conversationId}`).fetchSockets();
+        console.log('[Socket] Sockets in conversation room:', socketsInRoom.length);
+        console.log('[Socket] Socket IDs in room:', socketsInRoom.map(s => s.id));
+        console.log('[Socket] User IDs in room:', socketsInRoom.map(s => s.userId));
+
         io.to(`conversation:${conversationId}`).emit("message:new", {
           _id: message._id.toString(),
           conversation: conversationId,

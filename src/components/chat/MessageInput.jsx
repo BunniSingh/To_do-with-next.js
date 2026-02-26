@@ -58,7 +58,7 @@ export default function MessageInput({ onSendMessage, disabled }) {
   }, []);
 
   return (
-    <form onSubmit={handleSubmit} className="p-4 border-t border-gray-200 dark:border-slate-700">
+    <form onSubmit={handleSubmit} className="p-2 sm:p-4 border-t border-gray-200 dark:border-slate-700">
       <div className="flex items-end gap-2">
         <div className="flex-1 relative">
           <textarea
@@ -69,17 +69,17 @@ export default function MessageInput({ onSendMessage, disabled }) {
             placeholder="Type a message..."
             disabled={disabled}
             rows={1}
-            className="w-full px-4 py-3 bg-gray-100 dark:bg-slate-700 border-0 rounded-2xl text-gray-800 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 resize-none max-h-32"
-            style={{ minHeight: '44px' }}
+            className="w-full px-3 sm:px-4 py-2 sm:py-3 bg-gray-100 dark:bg-slate-700 border-0 rounded-2xl text-sm sm:text-base text-gray-800 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 resize-none max-h-32"
+            style={{ minHeight: '40px' }}
           />
         </div>
         <button
           type="submit"
           disabled={!message.trim() || disabled}
-          className="p-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-full transition-colors shadow-md hover:shadow-lg"
+          className="p-2 sm:p-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-full transition-colors shadow-md hover:shadow-lg flex-shrink-0"
           aria-label="Send message"
         >
-          <Send className="w-5 h-5" />
+          <Send className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
       </div>
     </form>

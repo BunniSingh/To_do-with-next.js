@@ -31,10 +31,10 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: 'Invalid conversation ID' }, { status: 400 });
     }
 
-    // Verify user is a participant (userId is string)
+    // Verify user is a participant (both stored as strings now)
     const conversation = await Conversation.findOne({
       _id: new mongoose.Types.ObjectId(id),
-      participants: userId,
+      participants: userId, // Direct string comparison (no ObjectId conversion)
     });
 
     if (!conversation) {
@@ -146,11 +146,10 @@ export async function POST(request, { params }) {
       );
     }
 
-    // Verify user is a participant
-    // participants are stored as ObjectIds in database, so convert userId
+    // Verify user is a participant (both stored as strings now)
     const conversation = await Conversation.findOne({
       _id: new mongoose.Types.ObjectId(id),
-      participants: new mongoose.Types.ObjectId(userId),
+      participants: userId, // Direct string comparison (no ObjectId conversion)
     });
 
     if (!conversation) {

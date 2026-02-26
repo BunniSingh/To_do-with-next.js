@@ -6,6 +6,7 @@ import Conversation from '@/lib/models/Conversation';
 import Message from '@/lib/models/Message';
 import { findUserById, searchUsers } from '@/lib/usersDb';
 import { sanitizeString, isValidObjectId } from '@/lib/validation';
+import { emitConversationCreated } from '@/lib/socketEmitter';
 
 // GET - Get all conversations for the current user
 export async function GET(request) {
@@ -22,68 +23,99 @@ export async function GET(request) {
     console.log('[Chat API GET] User ID:', userId);
     console.log('[Chat API GET] User ID type:', typeof userId);
 
-    // Find all conversations where user is a participant
-    // participants are stored as ObjectIds in database
-    const userIdObj = new mongoose.Types.ObjectId(userId);
-    console.log('[Chat API GET] Querying with ObjectId:', userIdObj.toString());
-    
+    // Find all conversations where user is a participant (both stored as strings now)
+    console.log('[Chat API GET] Querying with userId string:', userId);
+
     const conversations = await Conversation.find({
-      participants: userIdObj,
+      participants: userId, // Direct string comparison (no ObjectId conversion)
     })
-    .populate('participants', '-password')
-    .populate('lastMessage')
     .sort({ updatedAt: -1 })
     .lean();
 
     console.log('[Chat API GET] Found', conversations.length, 'conversations');
-    console.log('[Chat API GET] Conversations:', conversations.map(c => ({ id: c._id, name: c.name, participants: c.participants.map(p => p.name) })));
 
-    // Format conversations
-    const formattedConversations = conversations.map(conv => {
+    // Format conversations - fetch user info for participants
+    const formattedConversations = await Promise.all(conversations.map(async conv => {
       console.log('[Chat API GET] Formatting conversation:', {
         id: conv._id,
         name: conv.name,
         type: conv.type,
-        participants: conv.participants.map(p => ({ id: p._id, name: p.name }))
+        participants: conv.participants
       });
-      
+
+      // Fetch user info for all participants
+      const participantsWithInfo = await Promise.all(conv.participants.map(async pId => {
+        const user = await findUserById(pId);
+        return user ? {
+          id: user._id.toString(),
+          name: user.name,
+          email: user.email,
+        } : {
+          id: pId,
+          name: 'Unknown',
+          email: 'unknown@localhost',
+        };
+      }));
+
       // Find other participants (exclude current user)
-      const otherParticipants = conv.participants.filter(p => {
-        const participantId = p._id ? p._id.toString() : p.toString();
-        return participantId !== userId;
-      });
+      const otherParticipants = participantsWithInfo.filter(p => p.id !== userId);
 
       console.log('[Chat API GET] Other participants:', otherParticipants.map(p => p.name));
 
       // Conversation name: ALWAYS use other participant's name for direct messages
-      // Don't use conv.name for direct messages
       const conversationName = conv.type === 'direct' && otherParticipants.length > 0
         ? otherParticipants.map(p => p.name).join(', ')
         : (conv.name || 'Unknown');
 
       console.log('[Chat API GET] Conversation name:', conversationName);
 
+      // Fetch last message if exists
+      let lastMessage = null;
+      let unreadCount = 0;
+      
+      if (conv.lastMessage) {
+        const lastMsg = await Message.findById(conv.lastMessage);
+        if (lastMsg) {
+          const sender = await findUserById(lastMsg.sender);
+          lastMessage = {
+            id: lastMsg._id.toString(),
+            content: lastMsg.content,
+            sender: sender ? {
+              id: sender._id.toString(),
+              name: sender.name,
+            } : null,
+            createdAt: lastMsg.createdAt,
+          };
+          
+          // Calculate unread count for this user
+          // Count messages not sent by current user and not read by current user
+          const unreadMessages = await Message.countDocuments({
+            conversation: conv._id,
+            sender: { $ne: userId },
+            'readBy.user': { $ne: userId },
+            status: { $in: ['sent', 'delivered'] },
+          });
+          unreadCount = unreadMessages;
+        }
+      }
+      
+      // Get last seen (last message time from other participants)
+      const lastSeen = await Message.findOne({
+        conversation: conv._id,
+        sender: { $ne: userId },
+      }).sort({ createdAt: -1 }).lean();
+
       return {
         id: conv._id.toString(),
         name: conversationName,
         type: conv.type,
-        participants: conv.participants.map(p => ({
-          id: p._id.toString(),
-          name: p.name,
-          email: p.email,
-        })),
-        lastMessage: conv.lastMessage ? {
-          id: conv.lastMessage._id.toString(),
-          content: conv.lastMessage.content,
-          sender: conv.lastMessage.sender ? {
-            id: conv.lastMessage.sender._id?.toString() || conv.lastMessage.sender.id,
-            name: conv.lastMessage.sender.name,
-          } : null,
-          createdAt: conv.lastMessage.createdAt,
-        } : null,
+        participants: participantsWithInfo,
+        lastMessage,
+        unreadCount,
+        lastSeenAt: lastSeen?.createdAt || null,
         updatedAt: conv.updatedAt,
       };
-    });
+    }));
 
     console.log('[Chat API GET] Returning formatted conversations:', formattedConversations.length);
     return NextResponse.json(formattedConversations);
@@ -192,35 +224,47 @@ export async function POST(request) {
       try {
         console.log('[Chat API] Checking for existing conversation...');
         console.log('[Chat API] userId:', userId, 'participantIds:', participantIds);
-        
-        const userIdObj = new mongoose.Types.ObjectId(userId);
-        const participantIdObj = new mongoose.Types.ObjectId(participantIds[0]);
-        
-        // Check for existing conversation with same participants (regardless of order)
+
+        // Check for existing conversation with same participants (both stored as strings)
         const existingConversation = await Conversation.findOne({
           type: 'direct',
           participants: {
-            $all: [userIdObj, participantIdObj],
+            $all: [userId, participantIds[0]], // Direct string comparison
             $size: 2  // Ensure exactly 2 participants
           },
         })
-        .populate('participants', '-password')
         .lean();
 
         console.log('[Chat API] Existing conversation found:', existingConversation ? existingConversation._id : 'null');
 
         if (existingConversation) {
-          const otherParticipants = existingConversation.participants.filter(p => p._id.toString() !== userId);
+          // Fetch user info for participants
+          const participantsWithInfo = await Promise.all(existingConversation.participants.map(async pId => {
+            const user = await findUserById(pId);
+            return user ? {
+              id: user._id.toString(),
+              name: user.name,
+              email: user.email,
+            } : {
+              id: pId,
+              name: 'Unknown',
+              email: 'unknown@localhost',
+            };
+          }));
+
+          const otherParticipants = participantsWithInfo.filter(p => p.id !== userId);
           console.log('[Chat API] Returning existing conversation:', existingConversation._id);
+          
+          // Calculate name from current user's perspective
+          const conversationName = existingConversation.type === 'direct' && otherParticipants.length > 0
+            ? otherParticipants.map(p => p.name).join(', ')
+            : existingConversation.name;
+          
           return NextResponse.json({
             id: existingConversation._id.toString(),
-            name: otherParticipants.map(p => p.name).join(', '),
+            name: conversationName,
             type: existingConversation.type,
-            participants: existingConversation.participants.map(p => ({
-              id: p._id.toString(),
-              name: p.name,
-              email: p.email,
-            })),
+            participants: participantsWithInfo,
             updatedAt: existingConversation.updatedAt,
             message: 'Conversation already exists',
           });
@@ -231,24 +275,24 @@ export async function POST(request) {
       }
     }
 
-    // Create new conversation - store participants as ObjectIds
+    // Create new conversation - store participants as STRINGS
     console.log('[Chat API] Creating new conversation...');
 
     const conversationData = {
       name: sanitizedName,
       type,
       participants: [
-        new mongoose.Types.ObjectId(userId),
-        ...participantIds.map(id => new mongoose.Types.ObjectId(id))
+        userId, // Store as STRING
+        ...participantIds // Store as STRINGS
       ],
-      createdBy: new mongoose.Types.ObjectId(userId),
+      createdBy: userId, // Store as STRING
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
     console.log('[Chat API] Conversation data:', {
       ...conversationData,
-      participants: conversationData.participants.map(p => p.toString())
+      participants: conversationData.participants
     });
 
     // Use MongoDB collection directly
@@ -256,23 +300,45 @@ export async function POST(request) {
 
     console.log('[Chat API] Conversation inserted:', result.insertedId);
 
-    // Get the created conversation with populated data
-    const createdConversation = await Conversation.findById(result.insertedId)
-      .populate('participants', '-password');
+    // Get the created conversation
+    const createdConversation = await Conversation.findById(result.insertedId).lean();
 
     console.log('[Chat API] Conversation created successfully:', createdConversation._id);
 
-    return NextResponse.json({
+    // Fetch user info for participants
+    const participantsWithInfo = await Promise.all(createdConversation.participants.map(async pId => {
+      const user = await findUserById(pId);
+      return user ? {
+        id: user._id.toString(),
+        name: user.name,
+        email: user.email,
+      } : {
+        id: pId,
+        name: 'Unknown',
+        email: 'unknown@localhost',
+      };
+    }));
+
+    // Calculate conversation name based on current user's perspective
+    // For direct messages, show the other participant's name
+    const otherParticipants = participantsWithInfo.filter(p => p.id !== userId);
+    const conversationName = createdConversation.type === 'direct' && otherParticipants.length > 0
+      ? otherParticipants.map(p => p.name).join(', ')
+      : createdConversation.name;
+
+    const conversationResponse = {
       id: createdConversation._id.toString(),
-      name: createdConversation.name,
+      name: conversationName,
       type: createdConversation.type,
-      participants: createdConversation.participants.map(p => ({
-        id: p._id.toString(),
-        name: p.name,
-        email: p.email,
-      })),
+      participants: participantsWithInfo,
       createdAt: createdConversation.createdAt,
-    }, { status: 201 });
+      updatedAt: createdConversation.updatedAt || new Date().toISOString(),
+    };
+
+    // Emit socket event to notify all participants about the new conversation
+    emitConversationCreated(conversationResponse, userId);
+
+    return NextResponse.json(conversationResponse, { status: 201 });
   } catch (error) {
     console.error('[Chat API] Error creating conversation:', error);
     console.error('[Chat API] Error details:', {

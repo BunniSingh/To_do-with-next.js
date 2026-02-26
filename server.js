@@ -21,6 +21,7 @@ import { parse } from "url";
 import next from "next";
 import { Server } from "socket.io";
 import { initSocket } from "./src/lib/socket.js";
+import { setSocketInstance } from "./src/lib/socketEmitter.js";
 import { validateEnv } from "./src/lib/validateEnv.js";
 
 console.log('[Socket] MONGODB_URI at import:', !!process.env.MONGODB_URI);
@@ -60,6 +61,9 @@ app.prepare().then(() => {
     pingTimeout: 60000,
     pingInterval: 25000,
   });
+
+  // Register socket instance for use in API routes
+  setSocketInstance(io);
 
   initSocket(io);
 

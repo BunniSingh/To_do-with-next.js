@@ -11,12 +11,10 @@ const conversationSchema = new mongoose.Schema({
     default: 'direct',
   },
   participants: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    type: String, // Store as string to match NextAuth session.user.id format
   }],
   createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    type: String, // Store as string to match NextAuth session.user.id format
   },
   lastMessage: {
     type: mongoose.Schema.Types.ObjectId,
