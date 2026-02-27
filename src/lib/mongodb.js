@@ -7,7 +7,7 @@ if (!MONGODB_URI) {
   console.warn('[MongoDB] ⚠️ MONGODB_URI not defined, using fallback...');
   console.warn('[MongoDB] process.env keys with MONGO:', Object.keys(process.env).filter(k => k.includes('MONGO')));
   // Set fallback
-  process.env.MONGODB_URI = 'mongodb://localhost:27017/my-app';
+  process.env.MONGODB_URI = 'mongodb+srv://bantikumarsingh91_db_user:advanced_todo_123@cluster0.ppuk47w.mongodb.net/advanced_todo_app';
   console.warn('[MongoDB] Fallback MONGODB_URI set:', process.env.MONGODB_URI);
 }
 
