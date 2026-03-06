@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
-export default function AddTodo({ onAddOrUpdate, onEdit, todos, editMode, editTodo, showToast }) {
+export default function AddTodo({ onAddOrUpdate, onEdit, todos=[], editMode, editTodo, showToast }) {
   const [text, setText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { status } = useSession();

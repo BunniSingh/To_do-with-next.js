@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { Check, CheckCheck } from 'lucide-react';
 
-export default function MessageList({ messages, conversation, typingUsers }) {
+export default function MessageList({ messages=[], conversation, typingUsers=[] }) {
   const { data: session } = useSession();
   const messagesEndRef = useRef(null);
 

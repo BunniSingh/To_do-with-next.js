@@ -5,7 +5,7 @@ import { useSocket } from '@/context/SocketContext';
 import { Search, Plus, MessageCircle } from 'lucide-react';
 
 export default function ConversationList({ 
-  conversations, 
+  conversations=[], 
   onSelectConversation, 
   selectedId, 
   onNewConversation,
