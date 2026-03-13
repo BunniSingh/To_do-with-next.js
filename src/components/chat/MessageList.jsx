@@ -92,7 +92,6 @@ export default function MessageList({ messages=[], conversation, typingUsers=[] 
                 key={messageKey}
                 className={`flex items-end gap-1.5 sm:gap-2 ${isOwn ? 'flex-row-reverse' : 'flex-row'} ${
                   showAvatar ? 'mb-3' : 'mb-1'
-                  
                 }`}
               >
                 {/* Avatar for received messages */}
