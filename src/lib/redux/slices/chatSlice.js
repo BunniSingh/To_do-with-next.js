@@ -81,7 +81,6 @@ const chatSlice = createSlice({
         };
       }
     },
-
     // Messages
     setMessages: (state, action) => {
       state.messages = action.payload;
