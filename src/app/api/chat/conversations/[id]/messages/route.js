@@ -48,9 +48,14 @@ export async function GET(request, { params }) {
     // Validate limit
     const safeLimit = Math.min(Math.max(limit, 1), 100);
 
-    // Get messages
+    // Get messages - exclude messages deleted for this user
     const messages = await Message.find({
       conversation: new mongoose.Types.ObjectId(id),
+      $or: [
+        { isDeleted: false },
+        { isDeleted: { $exists: false } },
+      ],
+      'deletedFor.user': { $ne: userId }, // Exclude messages deleted for this user
     })
     .sort({ createdAt: -1 })
     .skip(skip)
@@ -62,7 +67,7 @@ export async function GET(request, { params }) {
     // Format messages - handle string sender IDs by fetching user info
     const formattedMessages = await Promise.all(messages.map(async (msg) => {
       let senderInfo = null;
-      
+
       // If sender is a string ID, fetch user info
       if (typeof msg.sender === 'string') {
         const sender = await findUserById(msg.sender);
@@ -93,6 +98,8 @@ export async function GET(request, { params }) {
         status: msg.status,
         createdAt: msg.createdAt,
         readBy: msg.readBy,
+        isDeleted: msg.isDeleted || false,
+        deletedFor: msg.deletedFor || [],
       };
     })).then(arr => arr.reverse()); // Reverse to show oldest first
 

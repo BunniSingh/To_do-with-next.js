@@ -2,13 +2,9 @@ import mongoose from 'mongoose';
 
 const MONGODB_URI = process.env.MONGODB_URI;
 
-// Fallback if MONGODB_URI is not set
+// Validate MONGODB_URI is set
 if (!MONGODB_URI) {
-  console.warn('[MongoDB] ⚠️ MONGODB_URI not defined, using fallback...');
-  console.warn('[MongoDB] process.env keys with MONGO:', Object.keys(process.env).filter(k => k.includes('MONGO')));
-  // Set fallback
-  process.env.MONGODB_URI = 'mongodb+srv://bantikumarsingh91_db_user:advanced_todo_123@cluster0.ppuk47w.mongodb.net/advanced_todo_app';
-  console.warn('[MongoDB] Fallback MONGODB_URI set:', process.env.MONGODB_URI);
+  throw new Error('[MongoDB] MONGODB_URI environment variable is not defined. Please set it in your .env.local file.');
 }
 
 let cached = global.mongoose;

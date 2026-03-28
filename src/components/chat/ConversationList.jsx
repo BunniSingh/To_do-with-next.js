@@ -2,13 +2,15 @@
 
 import { useSession } from 'next-auth/react';
 import { useSocket } from '@/context/SocketContext';
-import { Search, Plus, MessageCircle } from 'lucide-react';
+import { Search, Plus, MessageCircle, MoreVertical, Trash2 } from 'lucide-react';
+import { useState } from 'react';
 
-export default function ConversationList({ 
-  conversations=[], 
-  onSelectConversation, 
-  selectedId, 
+export default function ConversationList({
+  conversations=[],
+  onSelectConversation,
+  selectedId,
   onNewConversation,
+  onDeleteConversation,
   searchQuery,
   setSearchQuery,
   showSearch,
@@ -17,6 +19,7 @@ export default function ConversationList({
   const { data: session } = useSession();
   const { connected } = useSocket();
   const onlineUsers = useSocket().onlineUsers;
+  const [menuOpen, setMenuOpen] = useState(null);
 
   const filteredConversations = conversations.filter(conv =>
     conv.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -136,52 +139,91 @@ export default function ConversationList({
               const isOnline = getOnlineStatus(conv);
               const lastSeen = getLastSeen(conv.lastSeenAt, isOnline);
               const unreadCount = conv.unreadCount || 0;
+              const isMenuOpen = menuOpen === conv.id;
 
               return (
-                <button
-                  key={conv.id}
-                  onClick={() => onSelectConversation(conv)}
-                  className={`w-full p-3 sm:p-4 flex items-start gap-2 sm:gap-3 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors border-b border-gray-100 dark:border-slate-700 ${
-                    selectedId === conv.id ? 'bg-indigo-50 dark:bg-slate-700' : ''
-                  }`}
-                >
-                  {/* Avatar with Online Status */}
-                  <div className="relative flex-shrink-0">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm sm:text-base">
-                      {conv.name.charAt(0).toUpperCase()}
-                    </div>
-                    {isOnline !== null && (
-                      <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full border-2 border-white dark:border-slate-800 ${
-                        isOnline ? 'bg-green-500' : 'bg-gray-400'
-                      }`} title={isOnline ? 'Active now' : 'Offline'} />
-                    )}
-                  </div>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <h3 className="font-semibold text-gray-800 dark:text-white truncate text-sm sm:text-base">
-                        {conv.name}
-                      </h3>
-                      <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0 ml-2">
-                        {formatTime(conv.lastMessage?.createdAt || conv.updatedAt)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 truncate flex-1">
-                        {lastSeen && !isOnline ? (
-                          <span className="text-gray-500 dark:text-gray-500">{lastSeen} · </span>
-                        ) : null}
-                        {formatLastMessage(conv.lastMessage)}
-                      </p>
-                      {unreadCount > 0 && (
-                        <span className="flex-shrink-0 min-w-[18px] sm:min-w-[20px] h-4 sm:h-5 px-1 sm:px-1.5 flex items-center justify-center bg-green-500 text-white text-xs font-bold rounded-full">
-                          {unreadCount > 99 ? '99+' : unreadCount}
-                        </span>
+                <div key={conv.id} className="relative">
+                  <button
+                    onClick={() => {
+                      onSelectConversation(conv);
+                      setMenuOpen(null);
+                    }}
+                    className={`w-full p-3 sm:p-4 flex items-start gap-2 sm:gap-3 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors border-b border-gray-100 dark:border-slate-700 ${
+                      selectedId === conv.id ? 'bg-indigo-50 dark:bg-slate-700' : ''
+                    }`}
+                  >
+                    {/* Avatar with Online Status */}
+                    <div className="relative flex-shrink-0">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm sm:text-base">
+                        {conv.name.charAt(0).toUpperCase()}
+                      </div>
+                      {isOnline !== null && (
+                        <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full border-2 border-white dark:border-slate-800 ${
+                          isOnline ? 'bg-green-500' : 'bg-gray-400'
+                        }`} title={isOnline ? 'Active now' : 'Offline'} />
                       )}
                     </div>
-                  </div>
-                </button>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <h3 className="font-semibold text-gray-800 dark:text-white truncate text-sm sm:text-base">
+                          {conv.name}
+                        </h3>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0 ml-2">
+                          {formatTime(conv.lastMessage?.createdAt || conv.updatedAt)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 truncate flex-1">
+                          {lastSeen && !isOnline ? (
+                            <span className="text-gray-500 dark:text-gray-500">{lastSeen} · </span>
+                          ) : null}
+                          {formatLastMessage(conv.lastMessage)}
+                        </p>
+                        {unreadCount > 0 && (
+                          <span className="flex-shrink-0 min-w-[18px] sm:min-w-[20px] h-4 sm:h-5 px-1 sm:px-1.5 flex items-center justify-center bg-green-500 text-white text-xs font-bold rounded-full">
+                            {unreadCount > 99 ? '99+' : unreadCount}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Three dot menu */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuOpen(isMenuOpen ? null : conv.id);
+                    }}
+                    className="absolute top-3 right-3 p-1.5 hover:bg-gray-200 dark:hover:bg-slate-600 rounded-full transition-colors"
+                    aria-label="More options"
+                  >
+                    <MoreVertical className="w-4 h-4 text-gray-600 dark:text-gray-300" />
+                  </button>
+
+                  {/* Delete menu */}
+                  {isMenuOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setMenuOpen(null)}
+                      />
+                      <div className="absolute right-12 top-10 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-gray-200 dark:border-slate-700 py-1 z-20 min-w-[150px]">
+                        <button
+                          onClick={() => {
+                            onDeleteConversation(conv);
+                            setMenuOpen(null);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Delete Conversation
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               );
             })}
           </div>

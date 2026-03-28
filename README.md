@@ -1,29 +1,29 @@
 # Todo App with Real-Time Chat
 
-A full-stack Next.js application featuring **Todo management** and **WhatsApp-like real-time chat** powered by Socket.io.
+A full-stack Next.js application with Todo management and WhatsApp-like real-time chat powered by Socket.io.
 
 ## Features
 
 ### Todo Management
 - ✅ Create, edit, and delete todos
-- ✅ Mark todos as complete
-- ✅ User authentication with NextAuth.js
+- ✅ Mark todos as complete/incomplete
+- ✅ User-specific todo lists
 - ✅ Dark mode support
 - ✅ Responsive design
 
-### Real-Time Chat (New!)
+### Real-Time Chat
 - 💬 One-on-one and group conversations
 - 🔄 Real-time messaging with Socket.io
 - 👥 User search and contact management
 - 📱 Typing indicators
 - ✅ Message status (sent, delivered, read)
-- 🎨 WhatsApp-inspired UI
+- 🟢 Online/offline status
 - 📱 Mobile-responsive design
 
 ## Tech Stack
 
 - **Framework:** Next.js 16 (App Router)
-- **Authentication:** NextAuth.js
+- **Authentication:** NextAuth.js v5 (Credentials provider)
 - **Database:** MongoDB with Mongoose
 - **Real-time:** Socket.io
 - **Styling:** Tailwind CSS v4
@@ -33,98 +33,132 @@ A full-stack Next.js application featuring **Todo management** and **WhatsApp-li
 
 ### Prerequisites
 
-- Node.js 18+ 
-- MongoDB (local or cloud instance)
+- Node.js 18+
+- MongoDB (local or cloud instance like MongoDB Atlas)
 
 ### Installation
 
-1. Clone the repository and install dependencies:
+1. **Clone the repository:**
+```bash
+git clone <your-repo-url>
+cd todo-app-with-nextjs
+```
 
+2. **Install dependencies:**
 ```bash
 npm install
 ```
 
-2. Create a `.env.local` file in the root directory:
-
+3. **Create `.env.local` file:**
 ```bash
+cp .env.example .env.local
+```
+
+4. **Configure environment variables in `.env.local`:**
+```env
 # MongoDB Configuration
-MONGODB_URI=mongodb://localhost:27017/myapp
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/database_name
 
 # NextAuth Configuration
-NEXTAUTH_SECRET=your-secret-key-change-this-in-production
+# Generate secret: openssl rand -base64 32
+NEXTAUTH_SECRET=your-secret-key-here
 NEXTAUTH_URL=http://localhost:3000
 
-# Session Configuration
+# Session Configuration (optional)
 NEXTAUTH_SESSION_MAX_AGE=2592000
 
 # Application URL
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-3. Run the development server:
-
+5. **Run the development server:**
 ```bash
 npm run dev
 ```
 
-4. Open [http://localhost:3000](http://localhost:3000) in your browser.
+6. **Open [http://localhost:3000](http://localhost:3000)**
+
+## Deploy to Render
+
+### Step 1: Prepare MongoDB Atlas
+1. Go to [MongoDB Atlas](https://cloud.mongodb.com)
+2. Create a free cluster
+3. Get your connection string
+4. Whitelist `0.0.0.0/0` (all IPs) for Render access
+
+### Step 2: Deploy on Render
+1. Go to [Render.com](https://render.com)
+2. Click **New +** → **Web Service**
+3. Connect your GitHub repository
+4. Configure:
+   - **Name:** todo-app-with-chat
+   - **Environment:** Node
+   - **Region:** Choose closest to your users
+   - **Branch:** main
+   - **Build Command:** `npm install && npm run build`
+   - **Start Command:** `node server.js`
+   - **Instance Type:** Free
+
+5. **Add Environment Variables:**
+   - `MONGODB_URI` - Your MongoDB connection string
+   - `NEXTAUTH_SECRET` - Generate with: `openssl rand -base64 32`
+   - `NEXTAUTH_URL` - Your Render app URL (e.g., `https://todo-app.onrender.com`)
+   - `NEXT_PUBLIC_APP_URL` - Same as NEXTAUTH_URL
+   - `NODE_ENV` - `production`
+   - `PORT` - `3000`
+
+6. Click **Create Web Service**
+
+### Important Notes for Render
+- First deployment takes 3-5 minutes
+- Free tier instances spin down after 15 minutes of inactivity
+- First request after spin-down takes ~30 seconds to wake up
+- Use MongoDB Atlas (not local MongoDB) for cloud deployment
 
 ## Project Structure
 
 ```
 src/
 ├── app/
-│   ├── api/              # API routes
+│   ├── api/
 │   │   ├── auth/         # Authentication endpoints
-│   │   ├── todos/        # Todo endpoints
-│   │   └── chat/         # Chat endpoints (new)
-│   ├── chat/             # Chat page (new)
+│   │   ├── todos/        # Todo CRUD endpoints
+│   │   └── chat/         # Chat endpoints
+│   ├── chat/             # Chat page
 │   ├── login/            # Login page
 │   ├── register/         # Registration page
 │   └── page.js           # Main todo page
 ├── components/
-│   ├── chat/             # Chat components (new)
-│   │   ├── ConversationList.jsx
-│   │   ├── MessageList.jsx
-│   │   ├── MessageInput.jsx
-│   │   └── NewConversationDialog.jsx
+│   ├── chat/             # Chat components
+│   ├── ui/               # UI components
 │   └── ...
 ├── context/
-│   ├── SocketContext.js  # Socket.io provider (new)
-│   └── ThemeContext.js
+│   ├── SocketContext.js  # Socket.io provider
+│   └── ThemeContext.js   # Dark mode provider
 ├── lib/
-│   ├── models/           # Mongoose models (new)
-│   │   ├── Conversation.js
-│   │   └── Message.js
-│   ├── socket.js         # Socket.io server setup (new)
+│   ├── models/           # Mongoose models
+│   ├── socket.js         # Socket.io server
+│   ├── auth.js           # NextAuth config
 │   └── ...
 └── ...
 ```
 
-## Chat Features Usage
-
-1. **Start a Conversation:**
-   - Click the chat icon (💬) in the header
-   - Click the "+" button to create a new conversation
-   - Search for users by name or email
-   - Select users and start chatting
-
-2. **Real-Time Features:**
-   - Messages are delivered instantly via Socket.io
-   - See when contacts are typing
-   - Message status indicators (✓ sent, ✓✓ delivered, ✓✓ read)
-   - Online/offline status
-
-3. **Mobile Support:**
-   - Responsive design works on all devices
-   - Swipe navigation between conversation list and chat
-
 ## API Endpoints
 
+### Authentication
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/[...nextauth]` - NextAuth endpoints
+
+### Todos
+- `GET /api/todos` - Get all todos
+- `POST /api/todos` - Create todo
+- `PUT /api/todos` - Update todo
+- `DELETE /api/todos?id=xxx` - Delete todo
+- `PATCH /api/todos?id=xxx` - Toggle todo
+
 ### Chat
-- `GET /api/chat/conversations` - Get all conversations
-- `POST /api/chat/conversations` - Create new conversation
-- `GET /api/chat/conversations/:id` - Get single conversation
+- `GET /api/chat/conversations` - Get conversations
+- `POST /api/chat/conversations` - Create conversation
 - `GET /api/chat/conversations/:id/messages` - Get messages
 - `POST /api/chat/conversations/:id/messages` - Send message
 - `GET /api/chat/users/search?q=query` - Search users
@@ -132,31 +166,30 @@ src/
 ## Important Notes
 
 ### Custom Server
-This project uses a custom Express server (`server.js`) to integrate Socket.io with Next.js. The server is configured in `package.json`:
+This app uses a custom Express server (`server.js`) for Socket.io integration. This means:
+- Cannot be deployed to Vercel serverless
+- Best for: Render, Railway, DigitalOcean, AWS EC2
 
-```json
-"scripts": {
-  "dev": "node server.js",
-  "start": "node server.js"
-}
-```
+### Socket.io Configuration
+- WebSocket connection: `/socket.io`
+- Auto-reconnection enabled
+- Authentication via NextAuth session
 
-### Socket.io Connection
-The Socket.io server authenticates users via NextAuth.js sessions and provides real-time bidirectional communication for messaging.
+## Troubleshooting
 
-## Learn More
+### Build fails on Render
+- Check logs in Render dashboard
+- Verify all environment variables are set
+- Ensure MongoDB Atlas allows connections from all IPs
 
-- [Next.js Documentation](https://nextjs.org/docs)
-- [Socket.io Documentation](https://socket.io/docs/v4/)
-- [NextAuth.js Documentation](https://next-auth.js.org/)
-- [Mongoose Documentation](https://mongoosejs.com/)
+### Chat not working
+- Verify Socket.io connection in browser console
+- Check if WebSocket is enabled in your hosting platform
+- Ensure NEXTAUTH_URL matches your domain
 
-## Deploy on Vercel
-
-**Note:** Due to the custom server setup for Socket.io, deployment on Vercel requires additional configuration. Consider using:
-- A VPS or cloud server (DigitalOcean, AWS EC2, etc.)
-- Vercel with a separate Socket.io server (e.g., on Railway, Render)
-- Vercel Serverless with WebSocket support (beta)
+### Authentication issues
+- Regenerate NEXTAUTH_SECRET (must be same in dev and prod)
+- Check NEXTAUTH_URL matches your app URL exactly
 
 ## License
 

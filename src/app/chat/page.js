@@ -10,6 +10,7 @@ import MessageList from '@/components/chat/MessageList';
 import MessageInput from '@/components/chat/MessageInput';
 import NewConversationDialog from '@/components/chat/NewConversationDialog';
 import Toast from '@/components/chat/Toast';
+import { playNotificationSound, showBrowserNotification, isDocumentVisible, isWindowFocused, initializeNotifications } from '@/Utils/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,12 +30,29 @@ export default function ChatPage() {
   const [toast, setToast] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState('default');
 
   const selectedConversationRef = useRef(null);
+  const prevMessagesLengthRef = useRef(0);
 
   useEffect(() => {
     selectedConversationRef.current = selectedConversation;
   }, [selectedConversation]);
+
+  // Initialize notifications on mount
+  useEffect(() => {
+    initializeNotifications();
+    
+    // Check current permission
+    if ('Notification' in window) {
+      setNotificationPermission(Notification.permission);
+    }
+  }, []);
+
+  // Track previous messages length for detecting new messages
+  useEffect(() => {
+    prevMessagesLengthRef.current = messages.length;
+  }, [messages]);
 
   // Load conversations
   const loadConversations = useCallback(async () => {
@@ -118,29 +136,7 @@ export default function ChatPage() {
 
     const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    if (socket && connected) {
-      sendMessage(selectedConversation.id, content);
-    } else {
-      fetch(`/api/chat/conversations/${selectedConversation.id}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, type: 'text' }),
-      })
-      .then(async res => {
-        const data = await res.json();
-        if (res.ok) {
-          setMessages(prev => prev.map(msg =>
-            msg._tempId === tempId ? { ...msg, id: data.id, sender: data.sender, _tempId: undefined } : msg
-          ));
-        }
-      })
-      .catch(error => {
-        console.error('HTTP message send failed:', error);
-      });
-    }
-
-    stopTyping(selectedConversation.id);
-
+    // Optimistically add message to UI immediately
     const newMessage = {
       id: tempId,
       conversation: selectedConversation.id,
@@ -157,6 +153,59 @@ export default function ChatPage() {
     };
 
     setMessages(prev => [...prev, newMessage]);
+
+    // Update conversation's last message
+    setConversations(prev => prev.map(conv => 
+      conv.id === selectedConversation.id 
+        ? { 
+            ...conv, 
+            lastMessage: { 
+              id: tempId, 
+              content, 
+              sender: { _id: session.user.id, name: session.user.name },
+              createdAt: newMessage.createdAt 
+            },
+            updatedAt: newMessage.createdAt 
+          }
+        : conv
+    ).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)));
+
+    // Send via socket or HTTP fallback
+    if (socket && connected) {
+      sendMessage(selectedConversation.id, content);
+    } else {
+      // HTTP fallback
+      fetch(`/api/chat/conversations/${selectedConversation.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, type: 'text' }),
+      })
+      .then(async res => {
+        const data = await res.json();
+        if (res.ok) {
+          // Replace temp message with real one
+          setMessages(prev => prev.map(msg =>
+            msg._tempId === tempId ? { 
+              ...msg, 
+              id: data.id, 
+              sender: data.sender, 
+              _tempId: undefined,
+              status: 'sent'
+            } : msg
+          ));
+        } else {
+          // Show error if message failed to send
+          setToast({ message: 'Failed to send message', type: 'error' });
+        }
+      })
+      .catch(error => {
+        console.error('HTTP message send failed:', error);
+        setToast({ message: 'Message failed to send', type: 'error' });
+      });
+    }
+
+    // Stop typing indicator
+    stopTyping(selectedConversation.id);
   }, [selectedConversation, socket, connected, sendMessage, stopTyping, session]);
 
   // Handle new conversation
@@ -172,8 +221,7 @@ export default function ChatPage() {
 
       if (res.ok) {
         setShowNewConversationDialog(false);
-        await loadConversations();
-
+        
         const newConv = {
           id: data.id,
           name: data.name,
@@ -181,25 +229,41 @@ export default function ChatPage() {
           participants: data.participants,
           lastMessage: data.lastMessage || null,
           updatedAt: data.updatedAt || new Date().toISOString(),
+          unreadCount: 0,
         };
 
-        setConversations(prev => [newConv, ...prev]);
+        // Add conversation to list smoothly
+        setConversations(prev => {
+          const exists = prev.find(c => c.id === newConv.id);
+          if (exists) {
+            return prev.map(c => c.id === newConv.id ? { ...c, ...newConv } : c);
+          }
+          return [newConv, ...prev];
+        });
+
+        // Select the new conversation
         setSelectedConversation(newConv);
         setShowMobileList(false);
         setMessages([]);
         setTypingUsers([]);
 
+        // Join conversation room
         joinConversation(newConv.id);
         loadMessages(newConv.id);
 
-        setToast({ message: data.message || 'Conversation opened successfully!', type: 'success' });
+        // Show success toast
+        setToast({ 
+          message: `Conversation started with ${newConv.name}`, 
+          type: 'success' 
+        });
       } else {
         setToast({ message: data.error || 'Failed to create conversation', type: 'error' });
       }
     } catch (error) {
+      console.error('Error creating conversation:', error);
       setToast({ message: 'Error creating conversation', type: 'error' });
     }
-  }, [joinConversation, loadConversations, loadMessages]);
+  }, [joinConversation, loadMessages]);
 
   // Socket event listeners
   useEffect(() => {
@@ -209,8 +273,22 @@ export default function ChatPage() {
       const message = event.detail;
       const currentConv = selectedConversationRef.current;
       const isCurrentConversation = currentConv && message.conversation === currentConv.id;
+      const isFromMe = message.sender?._id === session?.user?.id;
 
-      if (!isCurrentConversation) {
+      // Show notification if message is from someone else and not in current conversation
+      if (!isFromMe && !isCurrentConversation) {
+        // Play notification sound
+        playNotificationSound();
+
+        // Show browser notification if tab is not focused
+        if (!isDocumentVisible() || !isWindowFocused()) {
+          showBrowserNotification(
+            'New Message',
+            `${message.sender?.name || 'Someone'} sent you a message`,
+          );
+        }
+
+        // Update conversation list with notification
         setConversations(prev => {
           const updated = prev.map(conv => {
             if (conv.id === message.conversation) {
@@ -232,6 +310,7 @@ export default function ChatPage() {
         });
       }
 
+      // Update messages if in current conversation
       if (isCurrentConversation) {
         setMessages(prev => {
           const exists = prev.find(m => m._id === message._id || m.id === message._id);
@@ -298,10 +377,25 @@ export default function ChatPage() {
 
     const handleConversationCreated = (event) => {
       const data = event.detail;
+      const newConv = data.conversation;
+      
+      // Add conversation to list smoothly
       setConversations(prev => {
-        const exists = prev.find(conv => conv.id === data.conversation.id);
-        if (exists) return prev;
-        return [data.conversation, ...prev];
+        const exists = prev.find(conv => conv.id === newConv.id);
+        if (exists) {
+          // Update existing conversation
+          return prev.map(conv => 
+            conv.id === newConv.id ? { ...conv, ...newConv } : conv
+          );
+        }
+        // Add new conversation at the top
+        return [newConv, ...prev];
+      });
+      
+      // Show toast notification
+      setToast({ 
+        message: `New conversation: ${newConv.name}`, 
+        type: 'info' 
       });
     };
 
@@ -318,16 +412,26 @@ export default function ChatPage() {
     };
   }, [connected, socket, session]);
 
-  // Sync selectedConversation lastSeenAt
+  // Sync selectedConversation lastSeenAt AND name from conversations state
   useEffect(() => {
     if (!selectedConversation) return;
-    
+
     const currentConv = conversations.find(c => c.id === selectedConversation.id);
-    if (currentConv && currentConv.lastSeenAt !== selectedConversation.lastSeenAt) {
-      setSelectedConversation(prev => ({
-        ...prev,
-        lastSeenAt: currentConv.lastSeenAt,
-      }));
+    if (currentConv) {
+      const updates = {};
+      if (currentConv.lastSeenAt !== selectedConversation.lastSeenAt) {
+        updates.lastSeenAt = currentConv.lastSeenAt;
+      }
+      // Update name if it changed (e.g., was 'Unknown' and now has proper name)
+      if (currentConv.name && currentConv.name !== selectedConversation.name) {
+        updates.name = currentConv.name;
+      }
+      if (Object.keys(updates).length > 0) {
+        setSelectedConversation(prev => ({
+          ...prev,
+          ...updates,
+        }));
+      }
     }
   }, [conversations, selectedConversation]);
 
@@ -349,8 +453,50 @@ export default function ChatPage() {
     );
   }
 
+  // Notification permission banner
+  const showNotificationBanner = notificationPermission === 'default' && status === 'authenticated';
+
+  const requestNotificationAccess = async () => {
+    if ('Notification' in window) {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+      if (permission === 'granted') {
+        setToast({ message: 'Notifications enabled!', type: 'success' });
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-900 dark:to-slate-800">
+      {/* Notification Permission Banner */}
+      {showNotificationBanner && (
+        <div className="bg-indigo-600 text-white px-4 py-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 flex-1">
+            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+            <p className="text-sm font-medium">Enable notifications to get alerts when you receive new messages</p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={requestNotificationAccess}
+              className="px-4 py-2 bg-white text-indigo-600 rounded-lg text-sm font-semibold hover:bg-indigo-50 transition-colors"
+            >
+              Enable
+            </button>
+            <button
+              onClick={() => setNotificationPermission('denied')}
+              className="px-3 py-2 text-indigo-200 hover:text-white transition-colors"
+              aria-label="Dismiss"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="container mx-auto h-[calc(100vh-2rem)] py-4 px-2 sm:px-4">
         <div className="h-full bg-white dark:bg-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col sm:flex-row">
           {/* Conversation List - Always visible on desktop, toggle on mobile */}
@@ -385,37 +531,51 @@ export default function ChatPage() {
                     >
                       <ArrowLeft className="w-5 h-5 text-gray-600 dark:text-gray-300" />
                     </button>
-                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold flex-shrink-0">
-                      {selectedConversation.name.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="font-semibold text-gray-800 dark:text-white truncate text-sm sm:text-base">
-                        {selectedConversation.name}
-                      </h3>
-                      <div className="flex items-center gap-2">
-                        {selectedConversation.type === 'direct' && selectedConversation.participants && (
-                          <>
-                            <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${
-                              onlineUsers.has(selectedConversation.participants.find(p => p.id !== session?.user?.id)?.id) ? 'bg-green-500' : 'bg-gray-400'
-                            }`} title={onlineUsers.has(selectedConversation.participants.find(p => p.id !== session?.user?.id)?.id) ? 'Active now' : 'Offline'}></span>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                              {typingUsers.length > 0
-                                ? `${typingUsers.join(', ')} typing...`
-                                : onlineUsers.has(selectedConversation.participants.find(p => p.id !== session?.user?.id)?.id)
-                                  ? 'Active now'
-                                  : selectedConversation.lastSeenAt
-                                    ? `Last seen ${new Date(selectedConversation.lastSeenAt).toLocaleString([], {
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                        day: selectedConversation.lastSeenAt && new Date(selectedConversation.lastSeenAt).toDateString() !== new Date().toDateString() ? 'numeric' : undefined,
-                                        month: selectedConversation.lastSeenAt && new Date(selectedConversation.lastSeenAt).toDateString() !== new Date().toDateString() ? 'short' : undefined,
-                                      })}`
-                                    : 'Offline'}
-                            </p>
-                          </>
-                        )}
-                      </div>
-                    </div>
+                    {(() => {
+                      // Get the friend's name (other participant) for direct messages
+                      const friend = selectedConversation.type === 'direct' && selectedConversation.participants
+                        ? selectedConversation.participants.find(p => p.id !== session?.user?.id)
+                        : null;
+                      const displayName = friend ? friend.name : selectedConversation.name;
+                      const friendId = friend?.id;
+                      const isFriendOnline = friendId ? onlineUsers.has(friendId) : false;
+
+                      return (
+                        <>
+                          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold flex-shrink-0">
+                            {displayName?.charAt(0).toUpperCase() || 'U'}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <h3 className="font-semibold text-gray-800 dark:text-white truncate text-sm sm:text-base">
+                              {displayName || 'Unknown'}
+                            </h3>
+                            <div className="flex items-center gap-2">
+                              {selectedConversation.type === 'direct' && (
+                                <>
+                                  <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${
+                                    isFriendOnline ? 'bg-green-500' : 'bg-gray-400'
+                                  }`} title={isFriendOnline ? 'Active now' : 'Offline'}></span>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                    {typingUsers.length > 0
+                                      ? `${typingUsers.join(', ')} typing...`
+                                      : isFriendOnline
+                                        ? 'Active now'
+                                        : selectedConversation.lastSeenAt
+                                          ? `Last seen ${new Date(selectedConversation.lastSeenAt).toLocaleString([], {
+                                              hour: '2-digit',
+                                              minute: '2-digit',
+                                              day: selectedConversation.lastSeenAt && new Date(selectedConversation.lastSeenAt).toDateString() !== new Date().toDateString() ? 'numeric' : undefined,
+                                              month: selectedConversation.lastSeenAt && new Date(selectedConversation.lastSeenAt).toDateString() !== new Date().toDateString() ? 'short' : undefined,
+                                            })}`
+                                          : 'Offline'}
+                                  </p>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
 

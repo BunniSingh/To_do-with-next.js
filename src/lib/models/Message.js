@@ -12,7 +12,6 @@ const messageSchema = new mongoose.Schema({
   },
   content: {
     type: String,
-    required: true,
     trim: true,
   },
   type: {
@@ -33,6 +32,20 @@ const messageSchema = new mongoose.Schema({
       type: Date,
     },
   }],
+  // For message deletion
+  isDeleted: {
+    type: Boolean,
+    default: false,
+  },
+  deletedFor: [{
+    user: {
+      type: String,
+    },
+    deletedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  }],
 }, {
   timestamps: true,
 });
@@ -40,6 +53,8 @@ const messageSchema = new mongoose.Schema({
 // Index for faster lookups
 messageSchema.index({ conversation: 1, createdAt: -1 });
 messageSchema.index({ sender: 1 });
+messageSchema.index({ isDeleted: 1 });
+messageSchema.index({ 'deletedFor.user': 1 });
 
 const Message = mongoose.models.Message || mongoose.model('Message', messageSchema);
 

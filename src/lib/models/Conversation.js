@@ -20,6 +20,16 @@ const conversationSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Message',
   },
+  // For one-sided conversation deletion
+  deletedBy: [{
+    user: {
+      type: String,
+    },
+    deletedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  }],
 }, {
   timestamps: true, // This automatically adds createdAt and updatedAt
 });
@@ -27,6 +37,7 @@ const conversationSchema = new mongoose.Schema({
 // Index for faster lookups
 conversationSchema.index({ participants: 1 });
 conversationSchema.index({ updatedAt: -1 });
+conversationSchema.index({ 'deletedBy.user': 1 });
 
 const Conversation = mongoose.models.Conversation || mongoose.model('Conversation', conversationSchema);
 

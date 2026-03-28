@@ -23,11 +23,12 @@ export async function GET(request) {
     console.log('[Chat API GET] User ID:', userId);
     console.log('[Chat API GET] User ID type:', typeof userId);
 
-    // Find all conversations where user is a participant (both stored as strings now)
+    // Find all conversations where user is a participant AND not deleted by user
     console.log('[Chat API GET] Querying with userId string:', userId);
 
     const conversations = await Conversation.find({
       participants: userId, // Direct string comparison (no ObjectId conversion)
+      'deletedBy.user': { $ne: userId }, // Exclude conversations deleted by this user
     })
     .sort({ updatedAt: -1 })
     .lean();
@@ -45,13 +46,15 @@ export async function GET(request) {
 
       // Fetch user info for all participants
       const participantsWithInfo = await Promise.all(conv.participants.map(async pId => {
-        const user = await findUserById(pId);
+        // Ensure pId is a string for lookup
+        const pIdStr = typeof pId === 'string' ? pId : pId.toString();
+        const user = await findUserById(pIdStr);
         return user ? {
           id: user._id.toString(),
           name: user.name,
           email: user.email,
         } : {
-          id: pId,
+          id: pIdStr,
           name: 'Unknown',
           email: 'unknown@localhost',
         };
@@ -63,9 +66,17 @@ export async function GET(request) {
       console.log('[Chat API GET] Other participants:', otherParticipants.map(p => p.name));
 
       // Conversation name: ALWAYS use other participant's name for direct messages
-      const conversationName = conv.type === 'direct' && otherParticipants.length > 0
-        ? otherParticipants.map(p => p.name).join(', ')
-        : (conv.name || 'Unknown');
+      // For group chats, use the conversation name if set, otherwise list all participants except current user
+      let conversationName;
+      if (conv.type === 'direct' && otherParticipants.length > 0) {
+        conversationName = otherParticipants[0].name;
+      } else if (conv.type === 'group') {
+        conversationName = conv.name || (otherParticipants.length > 0 
+          ? otherParticipants.map(p => p.name).join(', ')
+          : 'Group Chat');
+      } else {
+        conversationName = conv.name || 'Unknown';
+      }
 
       console.log('[Chat API GET] Conversation name:', conversationName);
 
@@ -240,13 +251,14 @@ export async function POST(request) {
         if (existingConversation) {
           // Fetch user info for participants
           const participantsWithInfo = await Promise.all(existingConversation.participants.map(async pId => {
-            const user = await findUserById(pId);
+            const pIdStr = typeof pId === 'string' ? pId : pId.toString();
+            const user = await findUserById(pIdStr);
             return user ? {
               id: user._id.toString(),
               name: user.name,
               email: user.email,
             } : {
-              id: pId,
+              id: pIdStr,
               name: 'Unknown',
               email: 'unknown@localhost',
             };
@@ -254,11 +266,18 @@ export async function POST(request) {
 
           const otherParticipants = participantsWithInfo.filter(p => p.id !== userId);
           console.log('[Chat API] Returning existing conversation:', existingConversation._id);
-          
-          // Calculate name from current user's perspective
-          const conversationName = existingConversation.type === 'direct' && otherParticipants.length > 0
-            ? otherParticipants.map(p => p.name).join(', ')
-            : existingConversation.name;
+
+          // Calculate name from current user's perspective - show other participant's name for direct messages
+          let conversationName;
+          if (existingConversation.type === 'direct' && otherParticipants.length > 0) {
+            conversationName = otherParticipants[0].name;
+          } else if (existingConversation.type === 'group') {
+            conversationName = existingConversation.name || (otherParticipants.length > 0 
+              ? otherParticipants.map(p => p.name).join(', ')
+              : 'Group Chat');
+          } else {
+            conversationName = existingConversation.name || 'Unknown';
+          }
           
           return NextResponse.json({
             id: existingConversation._id.toString(),
@@ -307,13 +326,14 @@ export async function POST(request) {
 
     // Fetch user info for participants
     const participantsWithInfo = await Promise.all(createdConversation.participants.map(async pId => {
-      const user = await findUserById(pId);
+      const pIdStr = typeof pId === 'string' ? pId : pId.toString();
+      const user = await findUserById(pIdStr);
       return user ? {
         id: user._id.toString(),
         name: user.name,
         email: user.email,
       } : {
-        id: pId,
+        id: pIdStr,
         name: 'Unknown',
         email: 'unknown@localhost',
       };
@@ -322,9 +342,16 @@ export async function POST(request) {
     // Calculate conversation name based on current user's perspective
     // For direct messages, show the other participant's name
     const otherParticipants = participantsWithInfo.filter(p => p.id !== userId);
-    const conversationName = createdConversation.type === 'direct' && otherParticipants.length > 0
-      ? otherParticipants.map(p => p.name).join(', ')
-      : createdConversation.name;
+    let conversationName;
+    if (createdConversation.type === 'direct' && otherParticipants.length > 0) {
+      conversationName = otherParticipants[0].name;
+    } else if (createdConversation.type === 'group') {
+      conversationName = createdConversation.name || (otherParticipants.length > 0 
+        ? otherParticipants.map(p => p.name).join(', ')
+        : 'Group Chat');
+    } else {
+      conversationName = createdConversation.name || 'Unknown';
+    }
 
     const conversationResponse = {
       id: createdConversation._id.toString(),
